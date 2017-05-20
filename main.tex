@@ -69,6 +69,52 @@ NdnMouse is composed of two applications: the server/producer Java application (
 Other dependencies include a few Python libraries needed for the PC client, specifically PyAutoGUI~\cite{pyautogui}, PyCrypto~\cite{pycrypto}, and PyNDN~\cite{pyndn}. PyAutoGUI provides mouse and keyboard control, as well as some simple dialog boxes for collecting user input. PyCrypto handles all the cryptography operations, and PyNDN provides the API for using NDN and for interfacing with NFD. The Android application uses jNDN~\cite{jndn} to access the NDN API, but this library comes compiled into ndnMouse's APK and requires no outside installation by the user. Both the PC and Android phone must have NFD installed and running to communicate over NDN.
 
 \section{Protocol}
+NdnMouse can run its communication protocol four different ways, depending on the transport protocol used (UDP or NDN) and if a password is provided by the user (security on or off).
+
+\subsection{UDP}
+Without a password (all security off), packets are transmitted in cleartext and are at most 16 bytes. UDP uses connection-oriented communication by having the client send an \texttt{OPEN} message to the server, similar to a TCP \texttt{SYN} packet. This asks the server to establish a \textit{session} between the client and itself. An \texttt{OPEN-ACK} reply message is used to respond to the \texttt{OPEN} message and completes the connection setup.
+
+Once a session is established, the server will send unsolicited mouse commands\footnote{I will refer to all commands ndnMouse can send as mouse commands, though this includes supported keyboard commands as well.} to its clients. The data format is not strict across all possible mouse commands, but generally takes the form of one character dictating the type of command, followed by any additional information for that command. For example, a mouse movement command is of the form \texttt{M<x-4B><y-4B>}. I denote the \textit{x} and \textit{y} coordinates each have a fixed length of 4 bytes by appending "\texttt{4B}." See \hyperlink{tab:msgFormat}{Table 1} for the supported, non-secure message formats.
+
+\begin{table}
+	\hypertarget{tab:msgFormat}{}
+	\begin{center}
+		\begin{tabular}{| l | l |}
+			\hline
+			Message Type & Message Format\\ \hline\hline
+			Movement & \texttt{M<x-4B><y-4B>}\\ \hline
+			Click & \texttt{C<click\_message>}\\ \hline
+			Scroll & \texttt{S<x-4B><y-4B>}\\ \hline
+			Keyboard & \texttt{K<keyboard\_message>}\\ \hline
+			Typestring & \texttt{T<type\_string-10B-max>}\\ \hline
+		\end{tabular}
+		\caption{Non-secure message formats}
+	\end{center}
+\end{table}
+
+Heartbeat messages are sent once every one second to keep the connection alive when no other mouse command packets are being sent. The client query packet contains the message \texttt{HEART}, and the server reply contains the message \texttt{BEAT}. The main goal of heartbeats was to detect when the server had lost its session with the client, such as during a server reset or crash. In these cases, the client would miss a certain number of heartbeat replies from the server, triggering a session restart on the client side. The client would then try to open a new session using \texttt{OPEN} messages. After receiving a \texttt{OPEN-ACK}, the session would resume normal activity.
+
+Lastly a \texttt{CLOSE} message is sent by the client upon exiting the application. This lets the server know that it can stop sending unsolicited mouse command messages 
+
+
+\begin{table}
+	\hypertarget{tab:secureMsgFormat}{}
+	\begin{center}
+		\begin{tabular}{| l | l |}
+			\hline
+			Message Type & Secure Message Format\\ \hline\hline
+			Movement & \texttt{<seq-4B>M<x-4B><y-4B>}\\ \hline
+			Click & \texttt{<seq-4B>C<click\_message>}\\ \hline
+			Scroll & \texttt{<seq-4B>S<x-4B><y-4B>}\\ \hline
+			Keyboard & \texttt{<seq-4B>K<keyboard\_message>}\\ \hline
+			Typestring & \texttt{<seq-4B>T<type\_string-10B-max>}\\ \hline
+		\end{tabular}
+		\caption{Secure message formats}
+	\end{center}
+\end{table}
+
+\subsection{NDN}
+
 %My application runs a custom, connectionless protocol (for both UDP and NDN implementations) that passes simple man-readable (when unencrypted) mouse control commands in the form of 48 byte packets (when using security). The protocol is not optimal regarding the encoding of commands. However the man-readable nature of the commands has made debugging considerably easier during development. I may consider re-designing the protocol when I know the entire command set that the app will need to handle.  However at most, I can save 16 bytes off of each packet (lowering the total packet size to 32 bytes). This is due to the requirements of AES~\cite{cipher} cipher block chaining (CBC), which supports key lengths of 128, 192, and 256 bits. I am using a 128 bit (16 byte) key from the hashed user-password, so the total packet length must always be a multiple of 16 bytes. A 16 byte, random, cleartext initialization vector (IV) must also be included in each packet to ensure that two packets with the same cleartext content never encrypt to the same ciphertext. A 16 byte IV and a 16 byte message results in a minimum packet size of 32 bytes. I may consider using another style of AES encryption (like electronic codebook) if I am able to reduce the packet size considerably later in the project.
 
 \subsection{Mouse Packets}
