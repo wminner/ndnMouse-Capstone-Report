@@ -9,23 +9,7 @@
 \paperheight=11in
 \renewcommand\_{\textunderscore\allowbreak}  % Allows line breaks on words with underscores
 
-% Begin packages/setup for timeline
-%\usepackage[utf8]{inputenc}
-%\usepackage[TS1,T1]{fontenc}
-%\usepackage{fourier, heuristica}
-%\usepackage{array, booktabs}
-%\usepackage{graphicx}
-%\usepackage[x11names]{xcolor}
-%\usepackage{colortbl}
-%\usepackage{caption}
-%\usepackage{tikz}  % checkmark icon
-%\usepackage{wrapfig}
-%\usepackage{soul}  % strikethrough
-%
-%\DeclareCaptionFont{blue}{\color{LightSteelBlue3}}
-%\newcommand{\foo}{\color{LightSteelBlue3}\makebox[0pt]{\textbullet}\hskip-0.5pt\vrule width 1pt\hspace{\labelsep}}
-%\def\checkmark{\tikz\fill[scale=0.4](0,.35) -- (.25,0) -- (1,.7) -- (.25,.15) -- cycle;}	% Checkmark icon
-% End packages/setup for timeline
+\usepackage{listings}
 
 \begin{document}
 	
@@ -45,7 +29,7 @@
 \begin{abstract}
 This report outlines the results of my efforts on ndnMouse, my class project for CS 217B, as well as my Master's Capstone project. It is open-sourced on \href{https://github.com/wminner/ndnMouse}{Github} under the GNU public license, and available on the \href{https://play.google.com/store/apps/details?id=edu.ucla.cs.ndnmouse}{Google Play App Store}. The goal of ndnMouse is to securely and efficiently control one or more personal computers via remote mouse movement and rudimentary keyboard commands from your phone, running the communication protocol over Named Data Networking (NDN)~\cite{ndn}. In order to compare the design and performance benefits of NDN, ndnMouse also supports communication over UDP. Implementation of both protocols resulted in fairly unique server and clients designs. The pros and cons of each will be explored in this report.
 
-Section 1 will review the features and use cases of ndnMouse, with more detail of the command protocol in Section 2. Details on the security features will be given in section 3, with challenges and trade-offs I have overcome listed in section 4. Performance analysis comparing NDN and UDP implementations is in section 5. Finally section 6 explores extensions and future use cases for ndnMouse. Additionally screenshots of the application are in section 7, the Appendix.
+Section 1 will review the features and use cases of ndnMouse, with more detail of the command protocol in Section 2. Details on the security features will be given in section 3, with challenges and trade-offs I have overcome listed in section 4. Performance analysis comparing NDN and UDP implementations is in section 5. Section 6 explores extensions and future use cases for ndnMouse, and section 7 looks at a few of the related works. Finally section 8 concludes this report. Additionally screenshots of the application are in section 7, the Appendix.
 \end{abstract}
 
 \keywords{NDN, Mouse, Keyboard, Remote Access, Security}
@@ -94,8 +78,9 @@ Once a session is established, the server will send unsolicited mouse commands\f
 
 Heartbeat messages are sent once every one second to keep the connection alive when no other mouse command packets are being sent. The client query packet contains the message \texttt{HEART}, and the server reply contains the message \texttt{BEAT}. The main goal of heartbeats was to detect when the server had lost its session with the client, such as during a server reset or crash. In these cases, the client would miss a certain number of heartbeat replies from the server, triggering a session restart on the client side. The client would then try to open a new session using \texttt{OPEN} messages. After receiving a \texttt{OPEN-ACK}, the session would resume normal activity.
 
-Lastly a \texttt{CLOSE} message is sent by the client upon exiting the application. This lets the server know that it can stop sending unsolicited mouse command messages 
+Lastly a \texttt{CLOSE} message is sent by the client upon exiting the application. This lets the server know that it can stop sending unsolicited mouse command messages. Note that reliable delivery and in-order processing of packets is not needed for ndnMouse, letting the application take advantage of the simplicity and performance of UDP. The simple, connection-oriented communication I implemented on top of UDP allows ndnMouse to gracefully recover from server/client connection problems.
 
+When security features are turned on, the UDP communication protocol becomes slightly more complex to prevent specific types of malicious attacks. Both the packet format and the payload message require changes. In \hyperlink{tab:secureMsgFormat}{Table 2}, the secure message formats are listed. A four byte sequence number is added to the front of each message, and then the entire message will then be encrypted, as described in the section 2.3 on Mouse Packets. The message length is also fixed to 16 bytes, using PKCS5 padding~\cite{rfc8018}.
 
 \begin{table}
 	\hypertarget{tab:secureMsgFormat}{}
@@ -114,21 +99,76 @@ Lastly a \texttt{CLOSE} message is sent by the client upon exiting the applicati
 \end{table}
 
 \subsection{NDN}
+When designing the NDN communication protocol, I found that the architecture would have to differ significantly from the UDP communication style. The consumer/producer\footnote{For NDN, the consumer can be thought of as the client, and the producer as the server. I may use these terms interchangeably as they are closely related.} relationship encourages the use of a connection communication. In this way, the consumer can easily get the data it requests without worrying about the location, as NDN data packets are immutable and authenticated via a signature. However note that I do not validate the signature on my NDN produced packets. More details on this will be given in section 4.1. ndnMouse's NDN communication protocol also uses the same message formats given in Table 1 and 2. The only difference is how they are retrieved by clients/consumers.
 
-%My application runs a custom, connectionless protocol (for both UDP and NDN implementations) that passes simple man-readable (when unencrypted) mouse control commands in the form of 48 byte packets (when using security). The protocol is not optimal regarding the encoding of commands. However the man-readable nature of the commands has made debugging considerably easier during development. I may consider re-designing the protocol when I know the entire command set that the app will need to handle.  However at most, I can save 16 bytes off of each packet (lowering the total packet size to 32 bytes). This is due to the requirements of AES~\cite{cipher} cipher block chaining (CBC), which supports key lengths of 128, 192, and 256 bits. I am using a 128 bit (16 byte) key from the hashed user-password, so the total packet length must always be a multiple of 16 bytes. A 16 byte, random, cleartext initialization vector (IV) must also be included in each packet to ensure that two packets with the same cleartext content never encrypt to the same ciphertext. A 16 byte IV and a 16 byte message results in a minimum packet size of 32 bytes. I may consider using another style of AES encryption (like electronic codebook) if I am able to reduce the packet size considerably later in the project.
+To allow multiple consumers to share the same data packets, I chose to use a connectionless design. This also fit well with the NDN callback-oriented API, where all communication activity on the server/producer is handled by a single main thread, set up beforehand to serve particular named interests. Contrast this to ndnMouse's UDP communication protocol, which spins off worker threads to handle each client separately. There is no need to do this with NDN as the connectionless design lets the producer be consumer agnostic. The NDN producer is set up to serve the interest names given in \hyperlink{tab:ndnInterestNames}{Table 3}. The sequence number and password salt interests are only served when ndnMouse has security turned on.
+
+\begin{table}
+	\hypertarget{tab:ndnInterestNames}{}
+	\begin{center}
+		\begin{tabular}{| l | l |}
+			\hline
+			 Interest Name & Purpose \\ \hline\hline
+			\texttt{/ndnmouse/move/} & Movement Data\\ \hline
+			\texttt{/ndnmouse/command/} & Command Data\\ \hline
+			\texttt{/ndnmouse/seq} & Sequence Number Sync\\ \hline
+			\texttt{/ndnmouse/salt} & Password Salt Data\\ \hline
+		\end{tabular}
+		\caption{Secure and non-secure NDN served interests}
+	\end{center}
+\end{table}
+
+While the NDN producer may run a connectionless communication protocol without security, an exception had to be made to support sequence numbers on the secure version. The sequence number primarily helps prevent replay attacks by functioning as a nonce. Each consumer must have some idea of the largest sequence number they have witnessed in returned data from the producer. This means that each consumer must maintain a state and cannot run a completely connectionless communication protocol. More details will be given in the section 3.
 
 \subsection{Mouse Packets}
+For non-secure communication, mouse packets are exactly the same as the message formats listed in \hyperlink{tab:msgFormat}{Table 1}. In those cases, the payload is the entire packet. When security is used, then additional information must be carried with the payload, and encryption is performed on select segments of the mouse packet. Specifically a 16 byte initialization vector (IV) is prepended to the front of every message, which will be used with AES encryption. More on this in security section 3. Additionally the total packet length is fixed at 32 bytes, and encryption is only performed on bytes 17-32. See \hyperlink{fig:mousePacketDescription}{Figure 1} for a visual representation of the secure mouse packet.
+
+\begin{figure*}
+	\hypertarget{fig:mousePacketDescription}{}
+\begin{lstlisting}
+                                    1                   2                   3
+bit num:        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2
+                -----------------------------------------------------------------
+contents:       |              IV               |  Seq  |  Message (PKCS5 pad)  |
+                -----------------------------------------------------------------
+encryption:	|<======== plaintext ==========>|<========= ciphertext ========>|
+\end{lstlisting}
+\caption{Secure mouse packet description}
+\end{figure*}
 
 % ==============================================================================
 \section{Security}
+Creating a secure communication protocol was one of my top priorities for ndnMouse. Few NDN applications thus far have implemented any meaningful security, and the scope of my project allowed me to spend the time to properly design a secure protocol. There are three major components to the security architecture: data encryption, sequence number validation, and password salting. These components are supported by both the UDP and NDN communication protocols of ndnMouse, though there exists a few minor implementation differences which will be explained below.
 
-\subsection{Encryption}
+\subsection{Data Encryption}
+Data encryption is handled by standard AES with cipher block chaining (CBC). CBC requires a new, random IV for each packet to ensure that the first block of a known piece of data always encrypts to a different piece of ciphertext. Remaining blocks in the data (if any) then use the prior block to act as the IV, which creates a chain of block encryptions. I chose this method because the alternative, electronic codebook, is known to be relatively weak for encrypting data with similar or the same payloads. NdnMouse would expect to send many click messages with the same data content, so I did not want these messages to encrypt to the same ciphertext for privacy reasons. 
 
-\subsection{Password Salting}
+A 16 byte block size was used for CBC, which meant that packets only contained one block to be encrypted. While this means that CBC provides little benefit to the AES encryption, ndnMouse packet sizes may grow in the future to accommodate more data per packet. Then CBC may be needed to encrypt multiple blocks of data. Additional thoughts on ndnMouse feature extensions are given in section 6.3.
+
+To ensure that the client/consumer can always decrypt a secured packet, the cleartext of the unique IV used for each packet's encryption is prepended to the front of the ciphertext. It is common to transmit IVs in cleartext, as knowledge of the IV alone cannot help decrypt an encrypted piece of data. The IV merely helps the final ciphertext to look more unique, regardless of the underlying cleartext data.
 
 \subsection{Sequence Number Validation}
+Even though each secured packet was unique via the IV and AES encryption, a replay attack could be used to maliciously force the client to perform an mouse command. To prevent this, sequence numbers were added to the front of each packet, which could then be validated on both the client and server side before executing any mouse or protocol commands. The sequence number policy of ndnMouse enforces that no command should be executed which contains a sequence number lower than the largest sequence number witnessed by the device. 
+
+Upon opening a new ndnMouse session, the client sends the initial \texttt{OPEN} message with a sequence number of zero, and the server replies with the \texttt{OPEN-ACK} message and a sequence number of one. Thereafter each mouse or protocol command uses the current sequence number incremented by one. Since each sequence number is only used once, this field can be thought of as a nonce. Since ndnMouse uses in-order sequence numbers, it is easy to determine if a number was previously used. So if an attacker recorded a set of encrypted packets and attempted to replay them at a later time to the client, the client would find old sequence numbers and simply ignore the commands.
+
+The question then arises whether packets delivered out-of-order would cause a problem for ndnMouse. This is not the case as both the server and client have a \textit{catch-up} mechanism, which allows them to set their sequence number to any number higher than what they are currently set to. If packets were to arrive with sequence number order 2, 4, and 3, the last packet command would be ignored. The catch-up mechanism would assume that sequence number 3 was lost or delivered late, skipping ahead to a current sequence number of 4. For a latency-sensitive mouse control application, late packets are useless anyway!
+
+\subsection{Password Salting}
+Users typically resort to using the same password for a given application. With this in mind, if packets were captured by a malicious subject during a given session of ndnMouse, the decryption key\footnote{For this report, the term \textit{key} refers to a cryptographically hashed user password} would be the same as any future session. Then replay attacks would still be possible \textit{intra}-session\footnote{between two different sessions} (as long as the sequence number was not relatively old). This is different than the prevention of \textit{inter}-session\footnote{within the same session} replay attacks that sequence numbers provided us. To resolve this security hole, random password salts were added to ndnMouse.
+
+For ndnMouse, a password salt is 16 random bytes generated by the client or server, which will be appended to the user password before hashing occurs to generate the key. The UDP communication protocol uses the initial IV on the client's \texttt{OPEN} message to use as the password salt for the remainder of the session. Like IV's, a password salt may be passed in cleartext as it does not help decrypt an encrypted message or reveal the user password in any way. 
+
+For the NDN communication protocol, all interest names are given in cleartext, so no IV can be used from the client/consumer as the password salt. To resolve this, the server/producer will create a random password salt on session startup. The consumer can simply retrieve this data by sending an interest for \texttt{/ndnmouse/salt} as seen in \hyperlink{tab:ndnInterestNames}{Table 3}. All other data returned for interests will be encrypted using the key generated with the salted user password.
+
+Traditional uses of a password salt are for storing user passwords securely in a database. Passwords are salted, then hashed, with the database only storing the resulting hash and the password salt in cleartext. In this way, a compromised database will not reveal the actual user passwords to the attackers. This would require a significant brute force effort of comparing a password rainbow table using the cleartext salts provided for every user, resulting in a table several magnitudes larger than a rainbow table needed for unsalted passwords. 
+
+NdnMouse does not store any form of the user password in persistent memory. However ndnMouse should not be susceptible to intra-session replay attacks. Therefore by simply using a password salt, each session will have a unique key for encryption/decryption even if the same user password is used. Any replayed packets from previous sessions will not decrypt correctly on the client side, and will be thrown away silently.
 
 \subsection{Attack Types and Defenses}
+As stated in the features section, security was designed to defend against packet snooping, replay attacks, privacy attacks, and brute force attacks. Each of the security features mentioned above target one or more of these malicious behaviors. Encryption prevents malicious subjects from snooping data from packets. Replay attacks are prevented both inter-session and intra-session via sequence number validation and the use of password salts respectively. 
+
+The effectiveness of privacy attacks is decreased by using new, random IVs on each individual packet. This prevents two packets with the same data being encrypted to the same ciphertext, reducing the amount of inference an attacker can gain by analyzing the data flow. Finally the efficiency of brute force attacks is limited by using a new password salt for each session. NdnMouse sessions are expected to be relatively short-lived, as slideshow presentations represent the primary use case. As a result, a relatively small amount of packets using the same key will be exposed for a brute force attacker to collect.
 	
 % ==============================================================================
 \section{Challenges and Trade-offs}
@@ -157,6 +197,21 @@ Lastly a \texttt{CLOSE} message is sent by the client upon exiting the applicati
 \subsection{Event Driven Architecture}
 
 \subsection{Stateful Multi-Threaded Architecture}
+
+% ==============================================================================
+\section{Extensions}
+
+\subsection{NDN Performance Optimization}
+
+\subsection{Many Mouse, One Computer}
+
+\subsection{Cross-Computer Mouse Support}
+
+% ==============================================================================
+\section{Related Works}
+
+% ==============================================================================
+\section{Conclusion}
 
 % ==============================================================================
 %\section{Expectations}
