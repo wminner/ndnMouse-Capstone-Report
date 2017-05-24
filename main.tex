@@ -14,7 +14,8 @@
 \begin{document}
 	
 \title{ndnMouse\\Secure Control Interface for a PC Using a Mobile Device}
-\subtitle{CS 217B Project Final Report, Spring 2017}
+%\subtitle{CS 217B Project Final Report, Spring 2017}
+\subtitle{Master's Capstone Project Report}
 \numberofauthors{1}
 \author{
 	Wesley Minner\\
@@ -27,10 +28,11 @@
 
 % ==============================================================================
 \begin{abstract}
-This report outlines the results of my efforts on ndnMouse, my class project for CS 217B, as well as my Master's Capstone project. It is open-sourced on \href{https://github.com/wminner/ndnMouse}{Github} under the GNU public license, and available on the \href{https://play.google.com/store/apps/details?id=edu.ucla.cs.ndnmouse}{Google Play App Store}. The goal of ndnMouse is to securely and efficiently control one or more personal computers via remote mouse movement and rudimentary keyboard commands from your phone, running the communication protocol over Named Data Networking (NDN)~\cite{ndn}. In order to compare the design and performance benefits of NDN, ndnMouse also supports communication over UDP. Implementation of both protocols resulted in fairly unique server and clients designs. The pros and cons of each will be explored in this report.
+This report outlines the results of my efforts on ndnMouse, my Master's Capstone project, as well as my class project for CS 217B. It is open-sourced on Github~\cite{ndnMouseGH} under the GNU public license, and available on the Google Play App Store~\cite{ndnMouseGP}. The goal of ndnMouse is to securely and efficiently control one or more personal computers via remote mouse movement and rudimentary keyboard commands from your phone, running the communication protocol over Named Data Networking (NDN)~\cite{ndn}. In order to judge the design and performance benefits of NDN, ndnMouse also supports communication over UDP. Implementation of both protocols resulted in fairly unique server and clients designs. The pros and cons of each will be explored in this report.
 
-Section 1 will review the features and use cases of ndnMouse, with more detail of the command protocol in Section 2. Details on the security features will be given in section 3, with challenges and trade-offs I have overcome listed in section 4. Performance analysis comparing NDN and UDP implementations is in section 5. Section 6 explores extensions and future use cases for ndnMouse, and finally section 8 concludes this report. Additionally screenshots of the application are in section 7, the Appendix.
+Section 1 will review the features and use cases of ndnMouse, with more detail of the command protocol in Section 2. Details on the security features will be given in section 3, with challenges and trade-offs I have overcome listed in section 4. Performance analysis comparing NDN and UDP implementations is in section 5. Section 6 explores extensions and future use cases for ndnMouse, and finally section 7 concludes this report. Additionally screenshots of the application are in section 9, the Appendix.
 \end{abstract}
+
 
 \keywords{NDN, Mouse, Keyboard, Remote Access, Security}
 
@@ -189,25 +191,45 @@ By having the user decide the shared secret offline and pass it as a parameter f
 While these arguments may not full justify stepping away from the ideal NDN workflow (which uses signature validation), I believe that a shared password works best for ndnMouse's use cases and fulfills its ease-of-use goal. However future extensions of ndnMouse may be able to add in a module to collect a shared secret via signature authentication, making use of all the features NDN has to offer.
 
 % ==============================================================================
-\section{Performance Analysis}
-
-\subsection{UDP vs NDN}
-
 \begin{figure}
 	\centering
+	\hypertarget{fig:ubuntuBenchmark}{}
 	\includegraphics[width=8cm]{plots/ubuntu}
 	\caption{Ubuntu mouse movement performance benchmark}
 \end{figure}
 
 \begin{figure}
 	\centering
+	\hypertarget{fig:osxBenchmark}{}
 	\includegraphics[width=8cm]{plots/osx}
 	\caption{OSX mouse movement performance benchmark}
 \end{figure}
 
-\subsection{Event Driven Architecture}
+\section{Performance Analysis}
+During my development of ndnMouse, I noticed a few key performance differences between the NDN and UDP communication protocols. This could be due to a variety of reasons, such as the ndnMouse server/client implementations, the core performance of NFD, the kernel integration of UDP, etc... This section will try to explore explore and explain who ndnMouse performs in a realistic scenario.
+
+Two PCs with two different operating systems (Ubuntu 16, and macOS\footnote{MacOS and OSX are used interchangeably in this report.} 10.12) were used for testing, along with a Nexus 5X phone running Android 7.0. The Ubuntu 16 PC is a custom built desktop, with an Ivy Bridge Intel CPU. The Macbook Pro laptop running macOS was built at the end of 2013. All benchmarks were performed on the same wireless connection (hosted by UCLA) with security enabled, in order to be as close as possible to the primary slideshow control use case. Wired and non-secure communication was also tested briefly, and no significant improvement was noticed in the movement update frequency. So only wireless, secure benchmarks are analyzed in this section.
+
+The benchmarking tests are segregated by PC due to hardware differences, and show the performance of both NDN and UDP communication protocols. The tests were designed to quantify how smooth mouse movement was on each communication protocol, and understand how the performance would scale with the number of clients connected to the ndnMouse server. The number of mouse movement update packets per second gives us a decent indication of how smoothly the mouse was moving on the client at any particular time. Each test lasted for 30 seconds, sending as many mouse movement updates as possible during that time. Each resulting dataset is summarized with a separate box plot on Figures \hyperlink{fig:ubuntuBenchmark}{2} and \hyperlink{fig:osxBenchmark}{3}. The multi-client tests were performed at the same time. That is, both the Ubuntu and OSX PCs were attached to the server/producer during the multi-client benchmarks, and the same dataset was used for the 2-client box plots. The single client datasets were all collected separately.
+
+\subsection{NDN vs UDP}
+Figures \hyperlink{fig:ubuntuBenchmark}{2} and \hyperlink{fig:osxBenchmark}{3} compare the performance of NDN to UDP for two different scenarios: single client and multi-client (2 clients). For single clients tests, NDN seems to be inconsistent in its frequency of movement updates relative to UDP, which seems to have very few points outside outside the median line markers. Additionally NDN has more outliers than UDP and a much wider range of update frequencies were observed in its 30 second test window. This correlates well to the user experience of the NDN communication protocol on ndnMouse. In practice, NDN mouse movements are often times jagged and slow to update. UDP, on the other hand, performs much more consistently, updating frequently enough to produce smooth and easy to control mouse movements.
+
+A glaring concern comes from the large performance gap between the Ubuntu benchmark and the OSX benchmark. This could be due to the hardware advantage of the Ubuntu desktop. However the proposed hardware advantage looks less influential on the benchmark when UDP is observed to be equivalent in performance for both Ubuntu and OSX. Another potential explanation could blame the performance of NFD on OSX vs a native Linux environment.
+
+The performance of NDN redeems itself when we examine how the implementations scale with additional client/consumer load. Oddly enough, the NDN performance becomes more consistent, with smaller box plot quadrants on both Ubuntu and OSX. Other than that, there is no noticeable performance degradation relative to the single client NDN benchmark. This was verified by viewing the data and by simply examining the smoothness of the mouse movements on-screen during the test.
+
+UDP does not fair so well in the multi-client benchmark, dropping its single client performance from a consistent 19 packets per second, to about half that rate for multiple clients. The same performance drop was found on both Ubuntu and OSX. The visual mouse smoothness also correlated this performance loss, with very jerky and inconsistent mouse movements on both attached clients. The following sections will examine how the NDN and UDP ndnMouse implementations can help explain these benchmark performance characteristics.
+
+\subsection{Event-Driven Architecture}
+NDN encourages the application writers to implement their producers as event-driven. Callbacks are setup ahead of time for specific interest names (events), then the producer simply waits for interests to come in to handle them serially. In this way, a single thread is needed for the producer to handle all incoming interests, similar to popular event-driven frameworks like Node.js~\cite{nodejs} and Twisted~\cite{twisted}. 
+
+This type of architecture is known to scale well, as adding more clients does not increase the overhead of thread management. Additionally the callback setup allows for a much simpler implementation in ndnMouse's case. The server is nearly stateless, with the exception of the sequence number nonces. When comparing the implementation classes for NDN and UDP, it is clear that the NDN producer code is shorter and easier to read. Using descriptive interest names also makes it clear to the programmer what is intended to be done with each handler.
 
 \subsection{Multi-Threaded Architecture}
+UDP's implementation took on a traditional multi-threaded approach, spinning off a new worker thread for each additional client. While this approach worked well for a single client, even just adding a second client increased the thread management overhead significantly, dropping the performance by half. The UDP clients must also keep track of more state than their NDN counterparts (like using heartbeats), in order to reap the performance benefits of unsolicited data.
+
+There may be performance optimizations that could help the UDP server scale better on cheap Android phones. It might be possible to push more responsibility on a single worker thread, rather than spinning off new threads each time another client arrives. However this would also increase the complexity of the implementation, by forcing one thread to juggle several different states for different clients.
 
 % ==============================================================================
 \section{Extensions}
@@ -217,8 +239,6 @@ NdnMouse was primarily developed in 7 weeks, starting from the beginning of Apri
 As shown in the performance section, ndnMouse's NDN communication protocol does not perform as well as its UDP sibling, for a single connected client. This could be due to a variety of reasons, such as NFD running as a software layer instead of integrated into the kernel. However this cannot easily be changed, so instead we look to ndnMouse's server implementation for NDN optimization opportunities.
 
 Mouse movement update consistency seem to be the main performance issue for the NDN communication protocol. Currently the NDN server architecture has only one outstanding (pending) interest at all times for collecting movement data. This means that an interest much be sent out across the network, be processed and fulfilled by the producer, then the resulting data must traverse back through the network, following the pending interest table (PIT), to the consumer. Only upon receiving the data back, can the NDN consumer send another movement interest.
-
-%If we define the time it takes to traverse the network from consumer to producer (or vice versa) as \textit{x}, then received movement data will be least \textit{x} time units stale. The data is considered fresh when it is created by the producer, immediately after receiving the interest. This latency cannot be reduced by changing the producer/consumer implementation.
 
 In order to smooth out mouse movement, data must be returned faster and at a more consistent speed. There might be a performance gain if ndnMouse consumers sends two or more outstanding movement interests at any one time (instead of just one). Having parallel pending interests could loosen the movement update bottleneck, as long as NFD is not causing the issue. However more experimentation would be required to gain any additional insight on this idea.
 
@@ -232,19 +252,15 @@ In order to support this feature, ndnMouse would require an architectural rework
 \subsection{Cross-Computer Mouse Support}
 In my view, the long term goal for ndnMouse was to create an application that could eventually control multiple PCs seamlessly. For example, moving your mouse from the screen of a laptop, to another monitor of a completely separate desktop, as if they were the same computer. Sharing a mouse and keyboard between computers over the network is not a new concept. The desktop application Synergy~\cite{synergy} has been around since 2001, and runs on all major desktop operating systems. It basically allows multiple computers with different operating systems to share the same mouse and keyboard, seamlessly transitioning the mouse across screens as if all the monitors were connected to a single computer.
 
-NdnMouse could fill a similar niche as Synergy, but also bring additional features and security with it via NDN. Communication between the server and clients would be more efficient when NDN's built-in multi-casting support is exploited. NDN packet signatures could be optionally validated for extra confidence when verifying identities. Lastly, the Android-based server front end of ndnMouse could also be ported to a desktop application to take advantage of real mouse and keyboard hardware (similar to Synergy).
+NdnMouse could fill a similar niche as Synergy, but also bring additional features and security with it via NDN. Communication between the server and clients would be more efficient when NDN's built-in multicasting support is exploited. NDN packet signatures could be optionally validated for extra confidence when verifying identities. Lastly, the Android-based server front end of ndnMouse could also be ported to a desktop application to take advantage of real mouse and keyboard hardware (similar to Synergy).
 
 These are just some of the extension ideas that show the promise of ndnMouse, and how it could continue to evolve and provide the benefits of NDN to more users.
 
 % ==============================================================================
 \section{Conclusion}
+This report has presented a new application for NDN, enabling users to securely control their PCs from across the room. NdnMouse provides all the features one would expect from a laptop trackpad, and adds supplementary keyboard support for slideshow presentations. Security was a focus of this application during development, and ndnMouse runs its own custom, secure communication protocol to thwart a majority of common attacks. By pressing forward with new NDN applications, it becomes easier to see how NDN can improve the overall security and efficiently of the Internet. 
 
-% ==============================================================================
-%\section{Expectations}
-%My expectations have only slightly changed since my initial project proposal. I plan to focus on the security aspects of NDN, implementing full mouse control with some basic keyboard control (to support remote slide show/powerpoint control). During my security implementation work, I realized that the signature validation capabilities of NDN may not be practical for ndnMouse's purposes. Requiring the user to install certificates and a trust anchor ahead of time for each of their devices is significantly more work than using a simple user-password. Using asymmetric encryption via certificates to securely pass a symmetric encryption key between devices also adds an unneeded extra step to each session setup, which I currently skip by requesting a offline, shared secret from the user in the form of a password. For these reasons I will deprecate the signature validation requirements for ndnMouse and focus on other quality of life enhancements for the user. I may return to signature validation experimentation if I have extra time at the end of the quarter.
-%
-%I am slightly ahead of my initial timeline projections, but I also plan to finish somewhat early to gain the Capstone faculty signatures required for graduation. If all goes well, there may be at least one week I can use to add additional ease-of-use features, such as two-finger scrolling support. For now I am focusing on the minimum viable product, which includes mouse control, basic keyboard support, and full encryption security.
-
+NdnMouse still has room to grow and this reports shows there are plenty of potential extensions which would help ndnMouse serve more users. Additionally ndnMouse helps uncover areas where NDN could use more optimization, demonstrating the performance differences between UDP and NDN server/client implementations. Overall the performance of single client NDN is still respectable compared to that of UDP, considering the additional layers of software and translation NFD adds to the stack. However the scaling performance of NDN is the real star of the show, and demonstrates how next-generation multicast applications can benefit from having a new "narrow waist of the Internet."
 
 % ==============================================================================
 % Bibliography
@@ -255,60 +271,60 @@ These are just some of the extension ideas that show the promise of ndnMouse, an
 \section{Appendix}
 Screenshots of the Android and PC applications follow. The Android app can be downloaded directly from the \href{https://play.google.com/store/apps/details?id=edu.ucla.cs.ndnmouse}{Google Play App Store}, and the PC client application can be downloaded from the \href{https://github.com/wminner/ndnMouse/tree/master/pc_client}{Github} repository.
 
-\begin{figure}[ht]
+\begin{figure}[hp]
 	\hypertarget{fig:start}{}
 	\centering
 	\includegraphics[width=6cm]{screenshots/start}
 	\caption{Start screen}
 \end{figure}
 
-\begin{figure}[ht]
+\begin{figure}[hp]
 	\hypertarget{fig:settings}{}
 	\centering
 	\includegraphics[width=6cm]{screenshots/settings}
 	\caption{Settings screen}
 \end{figure}
 
-\begin{figure}[ht]
+\begin{figure}[hp]
 	\hypertarget{fig:touchpad}{}
 	\centering
 	\includegraphics[width=6cm]{screenshots/touchpad}
 	\caption{Touchpad screen}
 \end{figure}
 
-\begin{figure}[ht]
+\begin{figure}[hp]
 	\hypertarget{fig:keyboard}{}
 	\centering
 	\includegraphics[width=6cm]{screenshots/keyboard}
 	\caption{Keyboard screen}
 \end{figure}
 
-\begin{figure}[ht]
+\begin{figure}[hp]
 	\hypertarget{fig:custom\_type\_message}{}
 	\centering
 	\includegraphics[width=6cm]{screenshots/custom_type_message}
 	\caption{Custom typed message entry}
 \end{figure}
 
-\begin{figure}[ht]
+\begin{figure*}[hp]
 	\hypertarget{fig:client1}{}
 	\centering
 	\includegraphics[width=11cm]{screenshots/client1}
 	\caption{PC program IP address entry}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[ht]
+\begin{figure*}[hp]
 	\hypertarget{fig:client2}{}
 	\centering
 	\includegraphics[width=11cm]{screenshots/client2}
 	\caption{PC program password entry}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[ht]
+\begin{figure*}[hp]
 	\hypertarget{fig:client3}{}
 	\centering
 	\includegraphics[width=11cm]{screenshots/client3}
 	\caption{PC program running}
-\end{figure}
+\end{figure*}
 
 \end{document}
