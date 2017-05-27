@@ -197,7 +197,7 @@ Since ndnMouse was designed to run over a local WiFi access point, there are two
 \begin{figure}
 	\centering
 	\hypertarget{fig:routeSetup}{}
-	\includegraphics[width=8cm]{diagrams/routeSetup}
+	\includegraphics[width=9cm]{diagrams/routeSetup}
 	\caption{Setting up an NFD route}
 \end{figure}
 
@@ -290,7 +290,26 @@ These are just some of the extension ideas that show the promise of ndnMouse, an
 % ==============================================================================
 \section{Related Work}
 \label{sec:relatedwork}
+There are no known NDN applications that serve as real-time control applications. Some tools are available that support that real-time synchronization of data, such as ChronoSync \cite{chronosync}. However applications that use this tool, like NDN Whiteboard~\cite{ndn-whiteboard}, are more latency tolerant than ndnMouse. NDN Whiteboard propagates changes on a shared drawing canvas to other users viewing the same whiteboard. Lower latency provides a better collaboration experience, but eventual consistency is good enough for this application. The same cannot be said for ndnMouse, which requires a low enough latency to allow remote control of a mouse pointer, displayed on different screen than the one taking user input.
 
+Alternatively, there is plenty of related work in the field of remote mouse and keyboard control (though not communicating over NDN). Searching Github, I found many open-source mouse control applications, but none of them I found implemented any security features. Two relatively popular Github repositories, Android Desktop Remote Control~\cite{justintaylor} and Mobile Mouse~\cite{mobilemouse}, had basic mouse and keyboard control features, but no security features were included. Neither of them appeared to be released on the Google Play store. 
+
+Android Desktop Remote Control uses UDP datagrams, while Mobile Mouse uses a TCP socket. Also both applications use a different server/client setup than ndnMouse. The PC acts as the server, while the Android phone acts as the client (ndnMouse has the opposite configuration). The advantage of the server-PC/client-phone configuration is that it may allow multiple phones to control a single PC. However, after examining the code of these two Githubs, it does not appear that the code architecture would allow this. Only one thread is created on server instantiation, which can only serve one client phone at a time.
+
+As for closed-source, mouse control applications, there are numerous free Android apps on the Google Play store. I chose two of the most popular ones (5-10 million installs category) and tested them out. Remote Mouse~\cite{remotemouse} is ad-supported with additional in-app purchases to unlock additional features. The base model is still well-featured, with many additional shortcuts and PC control options. The architecture defines the PC as the server, with connecting Android phones as the clients. Multiple phones may connect to control a single PC server. By using Wireshark~\cite{wireshark} to snoop packets between my phone and PC, I was able to analyze some of their communication protocol. Remote Mouse uses both UDP and TCP packets, where TCP is primarily used for setup and teardown of sessions. The UDP control packets were resistant to temporary network loss, as the session resumed control after WiFi was restored. 
+
+Security is laughable on Remote Mouse, in that it provides almost no protection from privacy attacks or replay attacks. The password authorization challenge always has the phone reply with the same hash (for a given password). This could easily be replayed to gain false authorization. No encryption is used for mouse commands, and keyboard typing uses some form of a Ceasar Cipher, shifting the character ASCII-encoding by a constant amount. It would be trivial to perform a man-in-the-middle attack and decode all typed characters sent from the phone.
+
+The other popular Android app, WiFi Mouse~\cite{wifimouse}, has a similarly free base application, with ads and paid additional features. Multiple phone clients can control a single PC server. TCP packets are used for all communication, but sessions cannot survive temporary network loss. No errors were reported by the client or server, but mouse and keyboard control no longer worked after toggling WiFi. Security is abysmal on this app, as a non-configurable 4 digit password is set automatically by the server. Authorization is needed to establish the initial TCP connection, but the challenge response hash given by the phone never changes (for a given password). All TCP data is cleartext, including keyboard messages, making it extremely easy to snoop sensitive information by following the TCP stream in Wireshark. Lastly, the server application reports currently running applications on your PC to the phone in cleartext. See \hyperlink{fig:snoop}{Figure 5} for an example. I can only guess this is some violation of privacy, as their privacy policy does not state they collect this type of information.
+
+\begin{figure}
+	\centering
+	\hypertarget{fig:snoop}{}
+	\includegraphics[width=8cm]{screenshots/snoop.png}
+	\caption{Snooping "secure" data from WiFi Mouse}
+\end{figure}
+
+After completing this related work research, I would recommend staying away from closed-source, mouse control Android apps. It is highly likely that no real security is implemented, and they may even be violating your privacy. Contrast that to ndnMouse, which implements powerful security and presents its code freely and openly to the community.
 
 % ==============================================================================
 \section{Conclusion}
