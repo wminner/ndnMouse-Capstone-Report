@@ -1,0 +1,35 @@
+% CS 217A/B, Winter/Spring 2017
+% Professor Lixia Zhang
+% Project Final Report
+
+\documentclass{sig-alternate}
+
+% General packages and setup
+\PassOptionsToPackage{hyphens}{url}\usepackage{hyperref}  % For embedding clickable links to citations
+\paperheight=11in
+\renewcommand\_{\textunderscore\allowbreak}  % Allows line breaks on words with underscores
+
+\usepackage{listings}
+
+\begin{document}
+	
+\title{ndnMouse\\Secure Control Interface for a PC Using a Mobile Device}
+%\subtitle{CS 217B Project Final Report, Spring 2017}
+\subtitle{Master's Capstone Project Report}
+\numberofauthors{1}
+\author{
+	Wesley Minner\\
+	Computer Science M.S. Student\\
+	wesleyminner@gmail.com
+}
+
+\date{18 May 2017}
+\maketitle
+
+% ==============================================================================
+\begin{abstract}
+This report outlines the results of my efforts on ndnMouse, my Master's Capstone project, as well as my class project for CS 217B. It is open-sourced on Github under the GNU public license, and freely available on the Google Play App Store. NdnMouse provides secure and efficient control of one or more personal computers via remote mouse movement and rudimentary keyboard commands from the user's phone, running the communication protocol over Named Data Networking (NDN). Benefiting from NDN's efficient multicasting performance, ndnMouse allows multiple PCs to query real-time data from a low-powered Android phone without a drop in performance. While at this time there is no immediate advantage for the user to connect multiple computers to ndnMouse, the long term goal is to support seamless mouse movement across multiple monitors on two or more computers. In order to judge the design and performance benefits of NDN, ndnMouse also supports communication over UDP. Implementation of both protocols resulted in fairly unique server and clients designs. The pros and cons of each will be explored in this report.
+\end{abstract}
+
+
+\end{document}
